@@ -50,8 +50,10 @@ function createWindow() {
     },
   });
 
-  // Always open DevTools for debugging
-  win.webContents.openDevTools();
+  // Only open DevTools in development mode
+  if (isDev) {
+    win.webContents.openDevTools();
+  }
 
   if (isDev) {
     // In development, use the Vite dev server

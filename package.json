@@ -94,8 +94,8 @@
     "wait-on": "^7.2.0"
   },
   "build": {
-    "appId": "com.gentlescholars.portal",
-    "productName": "Gentle Scholars Portal",
+    "appId": "RBU.Mavericks.StudentIMS",
+    "productName": "Student IMS",
     "directories": {
       "output": "release",
       "buildResources": "assets"
@@ -106,6 +106,7 @@
       "preload.js"
     ],
     "win": {
+      "icon": "assets/favicon.ico",
       "target": "nsis",
       "signAndEditExecutable": true,
       "signExts": [".exe", ".dll"],
@@ -120,8 +121,8 @@
     ]
   },
   "author": {
-    "name": "Gentle Scholars Portal",
-    "email": "info@gentlescholars.com"
+    "name": "Anurag Pathak",
+    "email": "anuragpathak2005@gmail.com"
   },
   "description": "Student Information Management System"
 }
