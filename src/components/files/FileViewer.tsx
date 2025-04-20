@@ -1,8 +1,5 @@
-
 import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { X } from 'lucide-react';
 
 interface FileViewerProps {
   file: {
@@ -78,12 +75,7 @@ const FileViewer: React.FC<FileViewerProps> = ({ file, isOpen, onClose }) => {
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-4xl w-[90vw]">
         <DialogHeader>
-          <div className="flex items-center justify-between">
-            <DialogTitle>{file.name}</DialogTitle>
-            <Button variant="ghost" size="icon" onClick={onClose} className="h-6 w-6 rounded-full">
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
+          <DialogTitle>{file.name}</DialogTitle>
           <DialogDescription>
             Uploaded on {file.date}
           </DialogDescription>
