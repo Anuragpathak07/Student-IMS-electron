@@ -106,7 +106,7 @@
       "preload.js"
     ],
     "win": {
-      "icon": "assets/favicon.ico",
+      "icon": "assets/app-icon.ico",
       "target": "nsis",
       "signAndEditExecutable": true,
       "signExts": [".exe", ".dll"],

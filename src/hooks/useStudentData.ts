@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Student } from '@/components/dashboard/StudentCard';
 import { useAuth } from '@/context/AuthContext';
 import { getStorageItem, setStorageItem, hasStorageItem } from '@/utils/storage';
@@ -98,11 +98,48 @@ export interface StudentDetail extends Student {
 const STUDENTS_STORAGE_KEY = 'students';
 const TEACHERS_STORAGE_KEY = 'teachers';
 
+// Pagination options
+export interface PaginationOptions {
+  page: number;
+  pageSize: number;
+}
+
+// Search options
+export interface SearchOptions {
+  searchTerm: string;
+  levelFilter: string;
+  sortBy?: 'name' | 'age' | 'grade' | 'disabilityLevel';
+  sortDirection?: 'asc' | 'desc';
+}
+
+// Cache for student data to avoid repeated storage access
+let studentDataCache: { [userId: string]: StudentDetail[] } = {};
+let teacherDataCache: { [userId: string]: Array<{id: string, name: string}> } = {};
+let lastLoadTime: { [userId: string]: number } = {};
+
+// Cache expiration time (5 minutes)
+const CACHE_EXPIRATION = 5 * 60 * 1000;
+
 export function useStudentData() {
   const [students, setStudents] = useState<StudentDetail[]>([]);
   const [teachers, setTeachers] = useState<Array<{id: string, name: string}>>([]);
   const { user } = useAuth();
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // Pagination state
+  const [pagination, setPagination] = useState<PaginationOptions>({
+    page: 1,
+    pageSize: 9, // Default to 9 students per page (3x3 grid)
+  });
+  
+  // Search state
+  const [searchOptions, setSearchOptions] = useState<SearchOptions>({
+    searchTerm: '',
+    levelFilter: 'all',
+    sortBy: 'name',
+    sortDirection: 'asc',
+  });
   
   // Force refresh function
   const forceRefresh = useCallback(() => {
@@ -117,16 +154,37 @@ export function useStudentData() {
     loadTeachers();
   }, [user?.id, refreshTrigger]);
 
-  // Load teachers data
+  // Load teachers data with caching
   const loadTeachers = useCallback(() => {
     if (!user) return;
     
-    const storedTeachers = getStorageItem<Array<{id: string, name: string}>>(
-      TEACHERS_STORAGE_KEY, 
-      user.id, 
-      []
-    );
-    setTeachers(storedTeachers);
+    // Check if we have cached data that's still valid
+    const now = Date.now();
+    if (
+      teacherDataCache[user.id] && 
+      lastLoadTime[user.id] && 
+      (now - lastLoadTime[user.id] < CACHE_EXPIRATION)
+    ) {
+      setTeachers(teacherDataCache[user.id]);
+      return;
+    }
+    
+    try {
+      const storedTeachers = getStorageItem<Array<{id: string, name: string}>>(
+        TEACHERS_STORAGE_KEY, 
+        user.id, 
+        []
+      );
+      
+      // Update cache
+      teacherDataCache[user.id] = storedTeachers;
+      lastLoadTime[user.id] = now;
+      
+      setTeachers(storedTeachers);
+    } catch (error) {
+      console.error('Error loading teachers:', error);
+      setTeachers([]);
+    }
   }, [user]);
   
   // Add new teacher
@@ -140,6 +198,11 @@ export function useStudentData() {
     
     const updatedTeachers = [...teachers, newTeacher];
     setTeachers(updatedTeachers);
+    
+    // Update cache
+    teacherDataCache[user.id] = updatedTeachers;
+    lastLoadTime[user.id] = Date.now();
+    
     setStorageItem(TEACHERS_STORAGE_KEY, user.id, updatedTeachers);
     
     return newTeacher;
@@ -151,6 +214,11 @@ export function useStudentData() {
     
     const updatedTeachers = teachers.filter(teacher => teacher.id !== id);
     setTeachers(updatedTeachers);
+    
+    // Update cache
+    teacherDataCache[user.id] = updatedTeachers;
+    lastLoadTime[user.id] = Date.now();
+    
     setStorageItem(TEACHERS_STORAGE_KEY, user.id, updatedTeachers);
     
     // Also remove this teacher from any assigned students
@@ -163,6 +231,11 @@ export function useStudentData() {
     
     if (JSON.stringify(updatedStudents) !== JSON.stringify(students)) {
       setStudents(updatedStudents);
+      
+      // Update cache
+      studentDataCache[user.id] = updatedStudents;
+      lastLoadTime[user.id] = Date.now();
+      
       setStorageItem(STUDENTS_STORAGE_KEY, user.id, updatedStudents);
     }
     
@@ -170,16 +243,37 @@ export function useStudentData() {
     forceRefresh();
   }, [user, teachers, students, forceRefresh]);
 
-  // Function to explicitly load students from storage
+  // Function to explicitly load students from storage with caching
   const loadStudents = useCallback(() => {
     if (!user) return;
     
+    setIsLoading(true);
+    
+    // Check if we have cached data that's still valid
+    const now = Date.now();
+    if (
+      studentDataCache[user.id] && 
+      lastLoadTime[user.id] && 
+      (now - lastLoadTime[user.id] < CACHE_EXPIRATION)
+    ) {
+      setStudents(studentDataCache[user.id]);
+      setIsLoading(false);
+      return;
+    }
+    
     try {
       const storedStudents = getStorageItem<StudentDetail[]>(STUDENTS_STORAGE_KEY, user.id, []);
+      
+      // Update cache
+      studentDataCache[user.id] = storedStudents;
+      lastLoadTime[user.id] = now;
+      
       setStudents(storedStudents);
     } catch (error) {
       console.error('Error loading students:', error);
       setStudents([]);
+    } finally {
+      setIsLoading(false);
     }
   }, [user]);
 
@@ -187,17 +281,26 @@ export function useStudentData() {
   const initializeMockData = useCallback(() => {
     if (!user) return;
     
+    setIsLoading(true);
+    
     try {
       setStorageItem(STUDENTS_STORAGE_KEY, user.id, MOCK_STUDENTS);
+      
+      // Update cache
+      studentDataCache[user.id] = MOCK_STUDENTS;
+      lastLoadTime[user.id] = Date.now();
+      
       setStudents(MOCK_STUDENTS);
       toast.success('Mock data initialized');
     } catch (error) {
       console.error('Error initializing mock data:', error);
       toast.error('Failed to initialize mock data');
+    } finally {
+      setIsLoading(false);
     }
   }, [user]);
 
-  // Get a student by ID
+  // Get a student by ID with caching
   const getStudentById = useCallback((id: string): StudentDetail | undefined => {
     return students.find(student => student.id === id);
   }, [students]);
@@ -205,6 +308,8 @@ export function useStudentData() {
   // Add a new student - returns the newly created student
   const addStudent = useCallback((studentData: Omit<StudentDetail, 'id'>) => {
     if (!user) return null;
+    
+    setIsLoading(true);
     
     try {
       const newStudent = {
@@ -214,6 +319,11 @@ export function useStudentData() {
       
       const updatedStudents = [...students, newStudent];
       setStudents(updatedStudents);
+      
+      // Update cache
+      studentDataCache[user.id] = updatedStudents;
+      lastLoadTime[user.id] = Date.now();
+      
       setStorageItem(STUDENTS_STORAGE_KEY, user.id, updatedStudents);
       
       // Force refresh
@@ -223,13 +333,19 @@ export function useStudentData() {
     } catch (error) {
       console.error('Error adding student:', error);
       return null;
+    } finally {
+      setIsLoading(false);
     }
   }, [user, students, forceRefresh]);
 
   // Update an existing student
   const updateStudent = useCallback((id: string, updatedData: Partial<StudentDetail>) => {
+    if (!user) return null;
+    
+    setIsLoading(true);
+    
     try {
-      const currentStudents = getStorageItem<StudentDetail[]>(STUDENTS_STORAGE_KEY, user?.id || '', []);
+      const currentStudents = getStorageItem<StudentDetail[]>(STUDENTS_STORAGE_KEY, user.id, []);
       const studentIndex = currentStudents.findIndex(student => student.id === id);
       
       if (studentIndex === -1) {
@@ -248,8 +364,12 @@ export function useStudentData() {
       const newStudents = [...currentStudents];
       newStudents[studentIndex] = updatedStudent;
 
+      // Update cache
+      studentDataCache[user.id] = newStudents;
+      lastLoadTime[user.id] = Date.now();
+      
       // Save to storage
-      setStorageItem(STUDENTS_STORAGE_KEY, user?.id || '', newStudents);
+      setStorageItem(STUDENTS_STORAGE_KEY, user.id, newStudents);
       
       // Update state
       setStudents(newStudents);
@@ -261,6 +381,8 @@ export function useStudentData() {
     } catch (error) {
       console.error('Error updating student:', error);
       return null;
+    } finally {
+      setIsLoading(false);
     }
   }, [user, forceRefresh]);
 
@@ -272,10 +394,16 @@ export function useStudentData() {
         return;
       }
       
+      setIsLoading(true);
+      
       try {
         // Get current students from storage
         const currentStudents = getStorageItem<StudentDetail[]>(STUDENTS_STORAGE_KEY, user.id, []);
         const updatedStudents = currentStudents.filter(student => student.id !== id);
+        
+        // Update cache
+        studentDataCache[user.id] = updatedStudents;
+        lastLoadTime[user.id] = Date.now();
         
         // Update storage first
         setStorageItem(STUDENTS_STORAGE_KEY, user.id, updatedStudents);
@@ -290,9 +418,71 @@ export function useStudentData() {
       } catch (error) {
         console.error('Error deleting student:', error);
         reject(error);
+      } finally {
+        setIsLoading(false);
       }
     });
   }, [user, forceRefresh]);
+
+  // Update pagination options
+  const setPaginationOptions = useCallback((options: Partial<PaginationOptions>) => {
+    setPagination(prev => ({ ...prev, ...options }));
+  }, []);
+
+  // Update search options
+  const setSearchOptionsHandler = useCallback((options: Partial<SearchOptions>) => {
+    setSearchOptions(prev => ({ ...prev, ...options }));
+    // Reset to first page when search criteria change
+    setPagination(prev => ({ ...prev, page: 1 }));
+  }, []);
+
+  // Filter and sort students based on search options - memoized for performance
+  const filteredStudents = useMemo(() => {
+    return students.filter(student => {
+      // Apply search term filter
+      const searchTermLower = searchOptions.searchTerm.toLowerCase();
+      const matchesSearch = 
+        student.name.toLowerCase().includes(searchTermLower) ||
+        student.disabilityType.toLowerCase().includes(searchTermLower) ||
+        student.grade.toLowerCase().includes(searchTermLower);
+      
+      // Apply level filter
+      const matchesLevel = searchOptions.levelFilter === 'all' ? true : student.disabilityLevel === searchOptions.levelFilter;
+      
+      return matchesSearch && matchesLevel;
+    }).sort((a, b) => {
+      // Apply sorting
+      if (!searchOptions.sortBy) return 0;
+      
+      const sortBy = searchOptions.sortBy;
+      const direction = searchOptions.sortDirection === 'desc' ? -1 : 1;
+      
+      if (sortBy === 'name') {
+        return direction * a.name.localeCompare(b.name);
+      } else if (sortBy === 'age') {
+        return direction * (a.age - b.age);
+      } else if (sortBy === 'grade') {
+        return direction * a.grade.localeCompare(b.grade);
+      } else if (sortBy === 'disabilityLevel') {
+        const levelOrder = { 'Mild': 1, 'Moderate': 2, 'Severe': 3 };
+        return direction * (levelOrder[a.disabilityLevel] - levelOrder[b.disabilityLevel]);
+      }
+      
+      return 0;
+    });
+  }, [students, searchOptions]);
+
+  // Get paginated students - memoized for performance
+  const paginatedStudents = useMemo(() => {
+    const startIndex = (pagination.page - 1) * pagination.pageSize;
+    const endIndex = startIndex + pagination.pageSize;
+    return filteredStudents.slice(startIndex, endIndex);
+  }, [filteredStudents, pagination]);
+
+  // Calculate total pages - memoized for performance
+  const totalPages = useMemo(() => {
+    return Math.ceil(filteredStudents.length / pagination.pageSize);
+  }, [filteredStudents, pagination.pageSize]);
 
   return {
     students,
@@ -306,6 +496,15 @@ export function useStudentData() {
     addTeacher,
     deleteTeacher,
     forceRefresh,
-    initializeMockData
+    initializeMockData,
+    isLoading,
+    // Pagination and search
+    paginatedStudents,
+    filteredStudents,
+    pagination,
+    searchOptions,
+    totalPages,
+    setPaginationOptions,
+    setSearchOptions: setSearchOptionsHandler
   };
 }
