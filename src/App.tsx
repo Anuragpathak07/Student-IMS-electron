@@ -15,6 +15,7 @@ import Dashboard from "./pages/Dashboard";
 import AddStudent from "./pages/AddStudent";
 import EditStudent from "./pages/EditStudent";
 import StudentDetails from "./pages/StudentDetails";
+import UserManagement from "./pages/UserManagement";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -23,6 +24,12 @@ const queryClient = new QueryClient();
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user } = useAuth();
   return user ? <>{children}</> : <Navigate to="/login" replace />;
+};
+
+// Admin protected route component
+const AdminProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user } = useAuth();
+  return user?.role === 'admin' ? <>{children}</> : <Navigate to="/dashboard" replace />;
 };
 
 // App with AuthProvider and routes
@@ -71,6 +78,14 @@ const AppWithRoutes = () => {
               <ProtectedRoute>
                 <StudentDetails />
               </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/users" 
+            element={
+              <AdminProtectedRoute>
+                <UserManagement />
+              </AdminProtectedRoute>
             } 
           />
           <Route path="*" element={<NotFound />} />

@@ -401,18 +401,21 @@ export function useStudentData() {
         const currentStudents = getStorageItem<StudentDetail[]>(STUDENTS_STORAGE_KEY, user.id, []);
         const updatedStudents = currentStudents.filter(student => student.id !== id);
         
+        // Update storage first
+        setStorageItem(STUDENTS_STORAGE_KEY, user.id, updatedStudents);
+        
         // Update cache
         studentDataCache[user.id] = updatedStudents;
         lastLoadTime[user.id] = Date.now();
         
-        // Update storage first
-        setStorageItem(STUDENTS_STORAGE_KEY, user.id, updatedStudents);
-        
-        // Then update state
+        // Update state and force a re-render
         setStudents(updatedStudents);
         
-        // Force refresh
+        // Force refresh to ensure all components update
         forceRefresh();
+        
+        // Reload students to ensure UI is in sync
+        loadStudents();
         
         resolve();
       } catch (error) {
@@ -422,7 +425,7 @@ export function useStudentData() {
         setIsLoading(false);
       }
     });
-  }, [user, forceRefresh]);
+  }, [user, forceRefresh, loadStudents]);
 
   // Update pagination options
   const setPaginationOptions = useCallback((options: Partial<PaginationOptions>) => {

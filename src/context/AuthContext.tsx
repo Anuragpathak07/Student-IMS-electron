@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import { getStorageItem, setStorageItem, removeStorageItem } from '@/utils/storage';
@@ -32,8 +32,8 @@ const SYSTEM_USER_ID = 'system';
 // Demo accounts
 const DEMO_ACCOUNTS = {
   admin: {
-    email: 'admin@school.com',
-    password: 'password',
+    email: 'admin@nandanvanschool.com',
+    password: 'admin@123',
     id: 'admin_1',
     name: 'Admin User',
     role: 'admin' as const
@@ -54,8 +54,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Check if user is already logged in on initial load
-  useEffect(() => {
+  // Memoize the initial user check
+  const checkInitialUser = useCallback(() => {
     try {
       const storedUser = getStorageItem<User>(USER_STORAGE_KEY, SYSTEM_USER_ID, null);
       if (storedUser) {
@@ -71,15 +71,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [navigate, location.pathname]);
 
-  // Redirect if not logged in
+  // Check if user is already logged in on initial load
   useEffect(() => {
+    checkInitialUser();
+  }, [checkInitialUser]);
+
+  // Memoize the redirect effect
+  const redirectIfNotLoggedIn = useCallback(() => {
     if (!isLoading && !user && location.pathname !== '/login') {
       navigate('/login');
     }
   }, [user, isLoading, navigate, location.pathname]);
 
-  // Sign up a new user
-  const signup = async (name: string, email: string, password: string) => {
+  useEffect(() => {
+    redirectIfNotLoggedIn();
+  }, [redirectIfNotLoggedIn]);
+
+  // Memoize the signup function
+  const signup = useCallback(async (name: string, email: string, password: string) => {
     setIsLoading(true);
     setError(null);
     
@@ -127,10 +136,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [navigate]);
 
-  // Login a user
-  const login = async (email: string, password: string) => {
+  // Memoize the login function
+  const login = useCallback(async (email: string, password: string) => {
     setIsLoading(true);
     setError(null);
     
@@ -181,23 +190,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [navigate]);
 
-  const logout = () => {
+  // Memoize the logout function
+  const logout = useCallback(() => {
     setUser(null);
     removeStorageItem(USER_STORAGE_KEY, SYSTEM_USER_ID);
     toast.success('Logged out successfully');
     navigate('/login');
-  };
+  }, [navigate]);
 
-  const value = {
+  // Memoize the context value
+  const value = useMemo(() => ({
     user,
     login,
     signup,
     logout,
     isLoading,
     error
-  };
+  }), [user, login, signup, logout, isLoading, error]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

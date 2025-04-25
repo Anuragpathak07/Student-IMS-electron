@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
@@ -30,12 +29,19 @@ export type Student = {
 
 interface StudentCardProps {
   student: Student;
+  onDelete?: () => void;
 }
 
-const StudentCard: React.FC<StudentCardProps> = ({ student }) => {
-  const navigate = useNavigate();
+const StudentCard: React.FC<StudentCardProps> = ({ student, onDelete }) => {
   const { deleteStudent } = useStudentData();
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isViewOpen, setIsViewOpen] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const getLevelColor = (level: string) => {
     switch (level) {
@@ -50,15 +56,20 @@ const StudentCard: React.FC<StudentCardProps> = ({ student }) => {
     }
   };
 
-  const handleDeleteStudent = () => {
+  const handleDeleteStudent = async () => {
     setIsDeleting(true);
+    setError(null);
     
-    // Simulate backend delay
-    setTimeout(() => {
-      deleteStudent(student.id);
-      toast.success('Student deleted successfully');
+    try {
+      await deleteStudent(student.id);
+      setIsDeleteOpen(false);
+      onDelete?.();
+    } catch (error) {
+      console.error('Error deleting student:', error);
+      setError('Failed to delete student. Please try again.');
+    } finally {
       setIsDeleting(false);
-    }, 500);
+    }
   };
 
   return (

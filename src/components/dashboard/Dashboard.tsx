@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect, Suspense, lazy, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { PlusCircle, Search, Filter, ChevronLeft, ChevronRight, ArrowUpDown, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -25,8 +25,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 // Lazy load the StudentCard component
 const StudentCard = lazy(() => import('./StudentCard'));
 
-// Loading skeleton for student cards
-const StudentCardSkeleton = () => (
+// Memoized loading skeleton
+const StudentCardSkeleton = React.memo(() => (
   <div className="bg-card rounded-lg shadow-sm p-4 border">
     <div className="flex items-center gap-4 mb-4">
       <Skeleton className="h-12 w-12 rounded-full" />
@@ -41,16 +41,16 @@ const StudentCardSkeleton = () => (
       <Skeleton className="h-3 w-1/2" />
     </div>
   </div>
-);
+));
 
-// Loading skeleton for student grid
-const StudentGridSkeleton = () => (
+// Memoized student grid skeleton
+const StudentGridSkeleton = React.memo(() => (
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
     {Array(6).fill(0).map((_, i) => (
       <StudentCardSkeleton key={i} />
     ))}
   </div>
-);
+));
 
 const Dashboard: React.FC = () => {
   const { 
@@ -62,18 +62,20 @@ const Dashboard: React.FC = () => {
     setPaginationOptions,
     setSearchOptions,
     loadStudents,
-    isLoading
+    isLoading,
+    forceRefresh
   } = useStudentData();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<string>('students');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchOptions.searchTerm);
+  const [updateTrigger, setUpdateTrigger] = useState(0);
   
-  // Ensure students are loaded when the dashboard mounts
+  // Memoize the load students effect
   useEffect(() => {
     if (user) {
       loadStudents();
     }
-  }, [user?.id]);
+  }, [user?.id, loadStudents, updateTrigger]);
   
   // Debounce search term to prevent excessive filtering
   useEffect(() => {
@@ -82,20 +84,20 @@ const Dashboard: React.FC = () => {
     }, 300);
     
     return () => clearTimeout(timer);
-  }, [debouncedSearchTerm]);
+  }, [debouncedSearchTerm, setSearchOptions]);
   
-  // Handle page change
-  const handlePageChange = (newPage: number) => {
+  // Memoize page change handler
+  const handlePageChange = useCallback((newPage: number) => {
     setPaginationOptions({ page: newPage });
-  };
+  }, [setPaginationOptions]);
   
-  // Handle page size change
-  const handlePageSizeChange = (newSize: number) => {
+  // Memoize page size change handler
+  const handlePageSizeChange = useCallback((newSize: number) => {
     setPaginationOptions({ pageSize: newSize, page: 1 });
-  };
+  }, [setPaginationOptions]);
   
-  // Handle sort change
-  const handleSortChange = (sortBy: 'name' | 'age' | 'grade' | 'disabilityLevel') => {
+  // Memoize sort change handler
+  const handleSortChange = useCallback((sortBy: 'name' | 'age' | 'grade' | 'disabilityLevel') => {
     const newDirection = 
       searchOptions.sortBy === sortBy && searchOptions.sortDirection === 'asc' 
         ? 'desc' 
@@ -105,13 +107,13 @@ const Dashboard: React.FC = () => {
       sortBy, 
       sortDirection: newDirection 
     });
-  };
+  }, [searchOptions.sortBy, searchOptions.sortDirection, setSearchOptions]);
   
-  // Get sort icon based on current sort
-  const getSortIcon = (field: 'name' | 'age' | 'grade' | 'disabilityLevel') => {
+  // Memoize sort icon getter
+  const getSortIcon = useCallback((field: 'name' | 'age' | 'grade' | 'disabilityLevel') => {
     if (searchOptions.sortBy !== field) return null;
     return searchOptions.sortDirection === 'asc' ? '↑' : '↓';
-  };
+  }, [searchOptions.sortBy, searchOptions.sortDirection]);
 
   return (
     <div className="space-y-6">
@@ -128,13 +130,13 @@ const Dashboard: React.FC = () => {
           )}
         </div>
       </div>
-      
+
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="w-full sm:w-auto mb-4">
           <TabsTrigger value="students">Students</TabsTrigger>
           <TabsTrigger value="teachers">Teachers</TabsTrigger>
         </TabsList>
-        
+
         <TabsContent value="students" className="space-y-6 pt-2">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
@@ -194,12 +196,16 @@ const Dashboard: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <Suspense fallback={<StudentGridSkeleton />}>
                   {paginatedStudents.map(student => (
-                    <StudentCard key={student.id} student={student} />
+                    <StudentCard 
+                      key={student.id} 
+                      student={student} 
+                      onDelete={() => setUpdateTrigger(prev => prev + 1)}
+                    />
                   ))}
                 </Suspense>
               </div>
               
-              {/* Pagination Controls - Fixed at the bottom with smaller font */}
+              {/* Pagination Controls */}
               <div className="sticky bottom-0 left-0 right-0 bg-background border-t py-3 px-4 mt-4 shadow-sm">
                 <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
                   <div className="flex items-center gap-2">
@@ -272,4 +278,4 @@ const Dashboard: React.FC = () => {
   );
 };
 
-export default Dashboard;
+export default React.memo(Dashboard);

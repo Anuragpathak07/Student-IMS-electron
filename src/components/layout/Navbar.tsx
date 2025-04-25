@@ -1,9 +1,8 @@
-
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
-import { LogOut, User } from 'lucide-react';
+import { LogOut, User, Users } from 'lucide-react';
 
 const Navbar: React.FC = () => {
   const { user, logout } = useAuth();
@@ -21,6 +20,17 @@ const Navbar: React.FC = () => {
               <div className="hidden md:flex text-sm">
                 Welcome, {user.name}
               </div>
+              {user.role === 'admin' && (
+                <Link to="/users">
+                  <Button 
+                    variant="ghost" 
+                    className="text-primary-foreground hover:bg-primary/90"
+                  >
+                    <Users className="h-4 w-4 mr-2" />
+                    <span>Manage Users</span>
+                  </Button>
+                </Link>
+              )}
               <Button 
                 variant="ghost" 
                 onClick={logout} 
