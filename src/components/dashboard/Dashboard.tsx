@@ -130,13 +130,13 @@ const Dashboard: React.FC = () => {
           )}
         </div>
       </div>
-
+      
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="w-full sm:w-auto mb-4">
           <TabsTrigger value="students">Students</TabsTrigger>
           <TabsTrigger value="teachers">Teachers</TabsTrigger>
         </TabsList>
-
+        
         <TabsContent value="students" className="space-y-6 pt-2">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">

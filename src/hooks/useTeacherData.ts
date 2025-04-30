@@ -1,7 +1,7 @@
-
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { getStorageItem, setStorageItem } from '@/utils/storage';
+import { useRealtimeUpdates } from './useRealtimeUpdates';
 
 export interface Teacher {
   id: string;
@@ -11,21 +11,16 @@ export interface Teacher {
 export function useTeacherData() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const { user } = useAuth();
+  const { recordUpdate, checkForUpdates, lastUpdate, getSharedData } = useRealtimeUpdates();
 
-  // Load teachers from localStorage on mount
+  // Load teachers from shared storage on mount
   useEffect(() => {
     if (!user) return;
     
-    const storedTeachers = getStorageItem<Teacher[]>('teachers', user.id, []);
+    const sharedData = getSharedData();
+    const storedTeachers = sharedData.teachers || [];
     setTeachers(storedTeachers);
-  }, [user]);
-
-  // Save teachers to localStorage whenever they change
-  useEffect(() => {
-    if (!user || teachers.length === 0) return;
-    
-    setStorageItem('teachers', user.id, teachers);
-  }, [teachers, user]);
+  }, [user, getSharedData]);
 
   // Add a new teacher
   const addTeacher = (name: string): Teacher => {
@@ -38,7 +33,7 @@ export function useTeacherData() {
     
     setTeachers(prev => {
       const updated = [...prev, newTeacher];
-      setStorageItem('teachers', user.id, updated);
+      recordUpdate('teacher', 'create', newTeacher);
       return updated;
     });
     
@@ -53,7 +48,10 @@ export function useTeacherData() {
       const updated = prev.map(teacher => 
         teacher.id === id ? { ...teacher, name } : teacher
       );
-      setStorageItem('teachers', user.id, updated);
+      const updatedTeacher = updated.find(t => t.id === id);
+      if (updatedTeacher) {
+        recordUpdate('teacher', 'update', updatedTeacher);
+      }
       return updated;
     });
   };
@@ -63,11 +61,28 @@ export function useTeacherData() {
     if (!user) return;
     
     setTeachers(prev => {
-      const updated = prev.filter(teacher => teacher.id !== id);
-      setStorageItem('teachers', user.id, updated);
-      return updated;
+      const teacherToDelete = prev.find(t => t.id === id);
+      if (teacherToDelete) {
+        recordUpdate('teacher', 'delete', teacherToDelete);
+      }
+      return prev.filter(teacher => teacher.id !== id);
     });
   };
+
+  // Add periodic update check
+  useEffect(() => {
+    if (!user) return;
+
+    const interval = setInterval(() => {
+      if (checkForUpdates(lastUpdate)) {
+        const sharedData = getSharedData();
+        const storedTeachers = sharedData.teachers || [];
+        setTeachers(storedTeachers);
+      }
+    }, 5000); // Check every 5 seconds
+
+    return () => clearInterval(interval);
+  }, [user, checkForUpdates, lastUpdate, getSharedData]);
 
   return {
     teachers,

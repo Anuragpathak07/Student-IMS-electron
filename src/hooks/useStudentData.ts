@@ -4,6 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { getStorageItem, setStorageItem, hasStorageItem } from '@/utils/storage';
 import { compressData, decompressData } from '@/utils/compression';
 import { toast } from 'sonner';
+import { useRealtimeUpdates } from './useRealtimeUpdates';
 
 // Mock data for initial load if no data in localStorage
 const MOCK_STUDENTS: Student[] = [
@@ -126,6 +127,7 @@ export function useStudentData() {
   const { user } = useAuth();
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const { recordUpdate, checkForUpdates, lastUpdate, getSharedData } = useRealtimeUpdates();
   
   // Pagination state
   const [pagination, setPagination] = useState<PaginationOptions>({
@@ -154,38 +156,49 @@ export function useStudentData() {
     loadTeachers();
   }, [user?.id, refreshTrigger]);
 
+  // Load students data with caching
+  const loadStudents = useCallback(() => {
+    if (!user) return;
+    
+    setIsLoading(true);
+    
+    try {
+      // Get shared data first
+      const sharedData = getSharedData();
+      const storedStudents = sharedData.students || [];
+      
+      // Update cache
+      studentDataCache[user.id] = storedStudents;
+      lastLoadTime[user.id] = Date.now();
+      
+      setStudents(storedStudents);
+    } catch (error) {
+      console.error('Error loading students:', error);
+      setStudents([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user, getSharedData]);
+
   // Load teachers data with caching
   const loadTeachers = useCallback(() => {
     if (!user) return;
     
-    // Check if we have cached data that's still valid
-    const now = Date.now();
-    if (
-      teacherDataCache[user.id] && 
-      lastLoadTime[user.id] && 
-      (now - lastLoadTime[user.id] < CACHE_EXPIRATION)
-    ) {
-      setTeachers(teacherDataCache[user.id]);
-      return;
-    }
-    
     try {
-      const storedTeachers = getStorageItem<Array<{id: string, name: string}>>(
-        TEACHERS_STORAGE_KEY, 
-        user.id, 
-        []
-      );
+      // Get shared data first
+      const sharedData = getSharedData();
+      const storedTeachers = sharedData.teachers || [];
       
       // Update cache
       teacherDataCache[user.id] = storedTeachers;
-      lastLoadTime[user.id] = now;
+      lastLoadTime[user.id] = Date.now();
       
       setTeachers(storedTeachers);
     } catch (error) {
       console.error('Error loading teachers:', error);
       setTeachers([]);
     }
-  }, [user]);
+  }, [user, getSharedData]);
   
   // Add new teacher
   const addTeacher = useCallback((name: string) => {
@@ -243,40 +256,6 @@ export function useStudentData() {
     forceRefresh();
   }, [user, teachers, students, forceRefresh]);
 
-  // Function to explicitly load students from storage with caching
-  const loadStudents = useCallback(() => {
-    if (!user) return;
-    
-    setIsLoading(true);
-    
-    // Check if we have cached data that's still valid
-    const now = Date.now();
-    if (
-      studentDataCache[user.id] && 
-      lastLoadTime[user.id] && 
-      (now - lastLoadTime[user.id] < CACHE_EXPIRATION)
-    ) {
-      setStudents(studentDataCache[user.id]);
-      setIsLoading(false);
-      return;
-    }
-    
-    try {
-      const storedStudents = getStorageItem<StudentDetail[]>(STUDENTS_STORAGE_KEY, user.id, []);
-      
-      // Update cache
-      studentDataCache[user.id] = storedStudents;
-      lastLoadTime[user.id] = now;
-      
-      setStudents(storedStudents);
-    } catch (error) {
-      console.error('Error loading students:', error);
-      setStudents([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user]);
-
   // Function to initialize mock data
   const initializeMockData = useCallback(() => {
     if (!user) return;
@@ -305,7 +284,7 @@ export function useStudentData() {
     return students.find(student => student.id === id);
   }, [students]);
 
-  // Add a new student - returns the newly created student
+  // Add a new student
   const addStudent = useCallback((studentData: Omit<StudentDetail, 'id'>) => {
     if (!user) return null;
     
@@ -314,7 +293,7 @@ export function useStudentData() {
     try {
       const newStudent = {
         ...studentData,
-        id: `student_${Date.now()}`, // Generate a unique ID
+        id: `student_${Date.now()}`,
       };
       
       const updatedStudents = [...students, newStudent];
@@ -324,7 +303,8 @@ export function useStudentData() {
       studentDataCache[user.id] = updatedStudents;
       lastLoadTime[user.id] = Date.now();
       
-      setStorageItem(STUDENTS_STORAGE_KEY, user.id, updatedStudents);
+      // Record the update with the full student data
+      recordUpdate('student', 'create', newStudent);
       
       // Force refresh
       forceRefresh();
@@ -336,7 +316,7 @@ export function useStudentData() {
     } finally {
       setIsLoading(false);
     }
-  }, [user, students, forceRefresh]);
+  }, [user, students, forceRefresh, recordUpdate]);
 
   // Update an existing student
   const updateStudent = useCallback((id: string, updatedData: Partial<StudentDetail>) => {
@@ -345,8 +325,7 @@ export function useStudentData() {
     setIsLoading(true);
     
     try {
-      const currentStudents = getStorageItem<StudentDetail[]>(STUDENTS_STORAGE_KEY, user.id, []);
-      const studentIndex = currentStudents.findIndex(student => student.id === id);
+      const studentIndex = students.findIndex(student => student.id === id);
       
       if (studentIndex === -1) {
         console.error('Student not found:', id);
@@ -355,24 +334,24 @@ export function useStudentData() {
 
       // Preserve existing data and merge with updates
       const updatedStudent = {
-        ...currentStudents[studentIndex],
+        ...students[studentIndex],
         ...updatedData,
         id // Ensure ID remains unchanged
       };
 
       // Update the students array
-      const newStudents = [...currentStudents];
+      const newStudents = [...students];
       newStudents[studentIndex] = updatedStudent;
 
       // Update cache
       studentDataCache[user.id] = newStudents;
       lastLoadTime[user.id] = Date.now();
       
-      // Save to storage
-      setStorageItem(STUDENTS_STORAGE_KEY, user.id, newStudents);
-      
       // Update state
       setStudents(newStudents);
+      
+      // Record the update with the full student data
+      recordUpdate('student', 'update', updatedStudent);
       
       // Force a refresh
       forceRefresh();
@@ -384,7 +363,7 @@ export function useStudentData() {
     } finally {
       setIsLoading(false);
     }
-  }, [user, forceRefresh]);
+  }, [user, students, forceRefresh, recordUpdate]);
 
   // Delete a student
   const deleteStudent = useCallback((id: string): Promise<void> => {
@@ -397,25 +376,26 @@ export function useStudentData() {
       setIsLoading(true);
       
       try {
-        // Get current students from storage
-        const currentStudents = getStorageItem<StudentDetail[]>(STUDENTS_STORAGE_KEY, user.id, []);
-        const updatedStudents = currentStudents.filter(student => student.id !== id);
-        
-        // Update storage first
-        setStorageItem(STUDENTS_STORAGE_KEY, user.id, updatedStudents);
+        const studentToDelete = students.find(s => s.id === id);
+        if (!studentToDelete) {
+          reject(new Error('Student not found'));
+          return;
+        }
+
+        const updatedStudents = students.filter(student => student.id !== id);
         
         // Update cache
         studentDataCache[user.id] = updatedStudents;
         lastLoadTime[user.id] = Date.now();
         
-        // Update state and force a re-render
+        // Update state
         setStudents(updatedStudents);
         
-        // Force refresh to ensure all components update
-        forceRefresh();
+        // Record the update with the student data
+        recordUpdate('student', 'delete', studentToDelete);
         
-        // Reload students to ensure UI is in sync
-        loadStudents();
+        // Force refresh
+        forceRefresh();
         
         resolve();
       } catch (error) {
@@ -425,7 +405,7 @@ export function useStudentData() {
         setIsLoading(false);
       }
     });
-  }, [user, forceRefresh, loadStudents]);
+  }, [user, students, forceRefresh, recordUpdate]);
 
   // Update pagination options
   const setPaginationOptions = useCallback((options: Partial<PaginationOptions>) => {
@@ -486,6 +466,20 @@ export function useStudentData() {
   const totalPages = useMemo(() => {
     return Math.ceil(filteredStudents.length / pagination.pageSize);
   }, [filteredStudents, pagination.pageSize]);
+
+  // Add periodic update check
+  useEffect(() => {
+    if (!user) return;
+
+    const interval = setInterval(() => {
+      if (checkForUpdates(lastUpdate)) {
+        loadStudents();
+        loadTeachers();
+      }
+    }, 5000); // Check every 5 seconds
+
+    return () => clearInterval(interval);
+  }, [user, checkForUpdates, lastUpdate, loadStudents, loadTeachers]);
 
   return {
     students,
