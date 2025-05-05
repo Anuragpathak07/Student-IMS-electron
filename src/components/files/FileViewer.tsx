@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Download } from 'lucide-react';
 
 interface FileViewerProps {
   file: {
@@ -24,15 +26,41 @@ const FileViewer: React.FC<FileViewerProps> = ({ file, isOpen, onClose }) => {
     // Determine how to display the file based on its type
     try {
       if (file.type.includes('image/')) {
-        return <img src={file.data} alt={file.name} className="max-w-full max-h-[70vh] object-contain mx-auto" />;
+        return (
+          <div className="space-y-4">
+            <img src={file.data} alt={file.name} className="max-w-full max-h-[70vh] object-contain mx-auto" />
+            <div className="flex justify-center">
+              <a 
+                href={file.data} 
+                download={file.name}
+                className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Download Image
+              </a>
+            </div>
+          </div>
+        );
       } else if (file.type.includes('pdf')) {
         return (
-          <div className="h-[70vh] w-full">
-            <iframe 
-              src={file.data} 
-              className="w-full h-full" 
-              title={file.name}
-            />
+          <div className="space-y-4">
+            <div className="h-[70vh] w-full">
+              <iframe 
+                src={file.data} 
+                className="w-full h-full" 
+                title={file.name}
+              />
+            </div>
+            <div className="flex justify-center">
+              <a 
+                href={file.data} 
+                download={file.name}
+                className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Download PDF
+              </a>
+            </div>
           </div>
         );
       } else if (file.type.includes('text/')) {
@@ -41,8 +69,20 @@ const FileViewer: React.FC<FileViewerProps> = ({ file, isOpen, onClose }) => {
         const base64Content = file.data.substring(contentStartIdx);
         const textContent = atob(base64Content);
         return (
-          <div className="p-4 bg-secondary rounded-md overflow-auto max-h-[70vh]">
-            <pre className="whitespace-pre-wrap">{textContent}</pre>
+          <div className="space-y-4">
+            <div className="p-4 bg-secondary rounded-md overflow-auto max-h-[70vh]">
+              <pre className="whitespace-pre-wrap">{textContent}</pre>
+            </div>
+            <div className="flex justify-center">
+              <a 
+                href={file.data} 
+                download={file.name}
+                className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90"
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Download File
+              </a>
+            </div>
           </div>
         );
       } else {
@@ -55,6 +95,7 @@ const FileViewer: React.FC<FileViewerProps> = ({ file, isOpen, onClose }) => {
               download={file.name}
               className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow hover:bg-primary/90"
             >
+              <Download className="h-4 w-4 mr-2" />
               Download File
             </a>
           </div>
